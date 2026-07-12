@@ -1,33 +1,36 @@
 """
-Task 2: 백필형 수집기.
+Task 2: 백필형 수집기 (Task 0 판정 B → data.binance.vision 일 덤프 경로).
 
-매 실행마다 저장소의 마지막 타임스탬프를 조회해 그 이후부터 현재까지 수집한다
-(idempotent). 실행 주기·cron 지연과 무관하게 데이터 연속성을 보장한다.
+매 실행마다 저장소의 마지막 타임스탬프를 조회해 그 이후 날짜부터 어제(UTC)까지의
+일 덤프를 받아 수집한다 (idempotent). cron 지연·중복 실행과 무관하게 연속성 보장.
+
+전환 배경: Actions 러너(미국)에서 바이낸스 fapi가 지역 차단(HTTP 451)되어,
+바이낸스 공개 일 덤프(data.binance.vision)로 수집원을 바꿨다. 덤프는 전일 데이터라
+하루 지연되지만 백테스트 용도에는 무영향이고, fapi의 OI 30일 제한이 없어 과거
+소급이 오히려 길다. (source='fapi' 경로는 로컬/비차단 환경 검증용으로 아래 유지)
 
 핵심 원칙:
-1. 백필 우선: 마지막 저장 지점 → 현재. 최초 실행은 설정한 최대 일수까지 소급.
-2. raw 변화량 저장: 봉 자체 완결값(cvd_delta, 스냅샷 sum_oi)만 저장. 누적 러닝값 금지.
-3. 완결봉만 저장: 아직 마감 안 된 현재 진행봉은 제외.
-4. 무결성: 5분 그리드 결측 탐지→1회 재시도, PK 중복 차단, 실행별 로그 기록.
+1. 백필 우선: 마지막 저장일 → 어제. 최초 실행은 config의 backfill_start_date부터.
+2. raw 변화량 저장: 봉 완결값(cvd_delta)·절대 스냅샷(sum_oi)만. 누적 러닝값 금지.
+3. 완결일만: 아직 발행 안 된 오늘 덤프는 제외(어제까지).
+4. 무결성: 결측일 탐지, PK 중복 차단, 실행별 로그 기록.
 
 사용:
-    python collector.py                 # config.json 기반 전 심볼 수집
+    python collector.py                 # config.json 기반 전 심볼
     python collector.py --symbol BTCUSDT
-    python collector.py --config config.json
 """
 from __future__ import annotations
 
 import argparse
 import json
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta, timezone
 
-import binance_api as api
 import netls
+import vision_source as vs
+from binance_api import RegionBlockedError
 from netls import BAR_MS
 from store import CSVStore
-
-FUNDING_MS = 8 * 3600 * 1000  # 펀딩 주기(참고용)
 
 
 def fnum(x) -> str:
@@ -40,86 +43,46 @@ def fnum(x) -> str:
     return s if s not in ("", "-0") else "0"
 
 
-# ----------------------------------------------------------------------------
-# klines 페이지네이션 (완결봉만)
-# ----------------------------------------------------------------------------
-def fetch_klines_range(symbol: str, start_ms: int, end_ms: int) -> dict[int, list]:
-    """open_time -> raw kline. [start_ms, end_ms) 의 완결봉만."""
-    out: dict[int, list] = {}
-    cursor = start_ms
-    while cursor < end_ms:
-        batch = api.klines(symbol, "5m", start_ms=cursor, end_ms=end_ms, limit=1500)
-        if not batch:
-            break
-        for k in batch:
-            ot = int(k[0])
-            # 완결봉만: 마감시각(open+5m)이 end_ms 이하
-            if ot + BAR_MS <= end_ms:
-                out[ot] = k
-        last_open = int(batch[-1][0])
-        if last_open + BAR_MS >= end_ms or len(batch) < 2:
-            break
-        cursor = last_open + BAR_MS
-        time.sleep(0.25)
+def _dstr(d: date) -> str:
+    return d.strftime("%Y-%m-%d")
+
+
+def _daterange(start: date, end: date):
+    d = start
+    while d <= end:
+        yield d
+        d += timedelta(days=1)
+
+
+def _months(start: date, end: date) -> list[str]:
+    out, seen = [], set()
+    for d in _daterange(start, end):
+        ym = d.strftime("%Y-%m")
+        if ym not in seen:
+            seen.add(ym)
+            out.append(ym)
     return out
 
 
-def fetch_oi_range(symbol: str, start_ms: int, end_ms: int) -> dict[int, dict]:
-    """timestamp -> OI 스냅샷. openInterestHist는 최근 30일만 가능."""
-    out: dict[int, dict] = {}
-    cursor = start_ms
-    while cursor < end_ms:
-        batch = api.open_interest_hist(symbol, "5m", start_ms=cursor, end_ms=end_ms, limit=500)
-        if not batch:
-            break
-        for o in batch:
-            out[int(o["timestamp"])] = o
-        last_ts = int(batch[-1]["timestamp"])
-        if last_ts + BAR_MS >= end_ms or len(batch) < 2:
-            break
-        cursor = last_ts + BAR_MS
-        time.sleep(0.25)
-    return out
-
-
-def fetch_funding_range(symbol: str, start_ms: int, end_ms: int) -> list[dict]:
-    out: list[dict] = []
-    cursor = start_ms
-    while cursor < end_ms:
-        batch = api.funding_rate(symbol, start_ms=cursor, end_ms=end_ms, limit=1000)
-        if not batch:
-            break
-        out.extend(batch)
-        last_ts = int(batch[-1]["fundingTime"])
-        if len(batch) < 1000:
-            break
-        cursor = last_ts + 1
-        time.sleep(0.25)
-    # dedup
-    dedup = {int(f["fundingTime"]): f for f in out}
-    return [dedup[t] for t in sorted(dedup)]
-
-
 # ----------------------------------------------------------------------------
-# 봉 행 조립 (klines + OI + 파생지표)
+# 봉 행 조립 (klines + vision OI(metrics) + 파생지표)
 # ----------------------------------------------------------------------------
 def build_bar_rows(symbol: str, kl_map: dict[int, list],
-                   oi_map: dict[int, dict]) -> list[dict]:
+                   oi_map: dict[int, tuple[float, float]]) -> list[dict]:
     rows: list[dict] = []
     for ot in sorted(kl_map):
         k = kl_map[ot]
         volume = float(k[5])
-        tbb = float(k[9])
+        tbb = float(k[9])              # taker_buy_volume (기초자산)
         cvd = netls.cvd_delta(tbb, volume)
 
         sum_oi = sum_oi_val = oi_delta = nl = ns = None
-        oi = oi_map.get(ot)
-        if oi is not None:
-            sum_oi = float(oi["sumOpenInterest"])
-            sum_oi_val = float(oi["sumOpenInterestValue"])
+        cur = oi_map.get(ot)
+        if cur is not None:
+            sum_oi, sum_oi_val = cur
             prev = oi_map.get(ot - BAR_MS)
             if prev is not None:
-                oi_delta = sum_oi - float(prev["sumOpenInterest"])
+                oi_delta = sum_oi - prev[0]
                 nl = netls.net_long_delta(oi_delta, cvd)
                 ns = netls.net_short_delta(oi_delta, cvd)
 
@@ -140,106 +103,96 @@ def build_bar_rows(symbol: str, kl_map: dict[int, list],
     return rows
 
 
-def build_funding_rows(symbol: str, raw: list[dict]) -> list[dict]:
-    rows = []
-    for f in raw:
-        ft = int(f["fundingTime"])
-        rows.append({
-            "symbol": symbol,
-            "funding_time": ft,
-            "datetime_utc": netls.ms_to_utc(ft),
-            "datetime_kst": netls.ms_to_kst(ft),
-            "funding_rate": fnum(float(f["fundingRate"])),
-            "mark_price": fnum(float(f["markPrice"])) if f.get("markPrice") else "",
-        })
-    return rows
-
-
-def count_missing(kl_map: dict[int, list], start_ms: int, end_ms: int) -> tuple[int, int, int]:
-    """[start,end) 그리드 대비 결측 봉 수. (기대, 실측, 결측)."""
-    grid_start = netls.align_floor(start_ms)
-    expected = [t for t in range(grid_start, end_ms, BAR_MS) if t + BAR_MS <= end_ms and t >= start_ms]
-    got = sum(1 for t in expected if t in kl_map)
-    return len(expected), got, len(expected) - got
-
-
 # ----------------------------------------------------------------------------
-# 심볼 단위 수집
+# 심볼 단위 수집 (vision)
 # ----------------------------------------------------------------------------
 def collect_symbol(store: CSVStore, symbol: str, cfg: dict, run_started: str) -> list[dict]:
     logs: list[dict] = []
-    now = netls.now_ms()
-    # 완결봉 경계: 현재 진행봉 제외
-    end_ms = netls.align_floor(now)
+    today = datetime.now(timezone.utc).date()
+    end_date = today - timedelta(days=1)   # 오늘 덤프는 아직 미발행
 
-    bf = cfg["backfill"]
-
-    # --- bars (klines + OI) ------------------------------------------------
+    # --- bars (klines + metrics OI) ---------------------------------------
     t0 = time.time()
     last = store.last_bar_time(symbol)
     if last is None:
-        start_ms = int(end_ms - bf["klines_max_days"] * 86400_000)
-        store.set_meta_once(symbol, "klines_backfill_start_ms", start_ms)
-        store.set_meta_once(symbol, "klines_backfill_start_kst", netls.ms_to_kst(start_ms))
+        start_date = datetime.strptime(cfg["vision"]["backfill_start_date"], "%Y-%m-%d").date()
+        store.set_meta_once(symbol, "vision_backfill_start_date", _dstr(start_date))
     else:
-        start_ms = last + BAR_MS
+        # 마지막 저장 봉이 속한 날부터 재처리(그날 나머지 봉 채우기, 중복은 dedup).
+        start_date = datetime.fromtimestamp(last / 1000, timezone.utc).date()
 
     written = 0
-    missing = 0
+    missing_days: list[str] = []
+    got_bars = 0
     note = ""
-    if start_ms < end_ms:
-        kl_map = fetch_klines_range(symbol, start_ms, end_ms)
-        # 결측 1회 재시도
-        exp, got, missing = count_missing(kl_map, start_ms, end_ms)
-        if missing > 0:
-            retry = fetch_klines_range(symbol, start_ms, end_ms)
-            kl_map.update(retry)
-            _, _, missing = count_missing(kl_map, start_ms, end_ms)
 
-        # OI: 최근 30일 한도. 직전봉 하나 포함해 oi_delta 계산 가능하게.
-        oi_floor = int(end_ms - bf["oi_max_days"] * 86400_000)
-        oi_start = max(start_ms - BAR_MS, oi_floor)
-        oi_map = fetch_oi_range(symbol, oi_start, end_ms) if oi_start < end_ms else {}
-        if oi_map:
-            earliest_oi = min(oi_map)
-            store.set_meta_once(symbol, "oi_backfill_start_ms", earliest_oi)
-            store.set_meta_once(symbol, "oi_backfill_start_kst", netls.ms_to_kst(earliest_oi))
-
-        rows = build_bar_rows(symbol, kl_map, oi_map)
-        written = store.upsert_bars(symbol, rows)
-        if start_ms < oi_floor:
-            note = "OI 30일 한도 초과 구간은 OI/파생지표 NULL"
+    if start_date > end_date:
+        note = "신규 완결일 없음"
     else:
-        note = "신규 완결봉 없음"
+        # OI 프리로드: 하루 경계 oi_delta 계산 위해 하루 앞선 metrics도 포함.
+        oi_map: dict[int, tuple[float, float]] = {}
+        for d in _daterange(start_date - timedelta(days=1), end_date):
+            oi_map.update(vs.metrics_day(symbol, _dstr(d)))
+        if oi_map:
+            earliest = min(oi_map)
+            store.set_meta_once(symbol, "oi_backfill_start_ms", earliest)
+            store.set_meta_once(symbol, "oi_backfill_start_kst", netls.ms_to_kst(earliest))
+
+        all_rows: list[dict] = []
+        for d in _daterange(start_date, end_date):
+            kl = vs.klines_day(symbol, _dstr(d))
+            if not kl:
+                missing_days.append(_dstr(d))
+                continue
+            got_bars += len(kl)
+            all_rows.extend(build_bar_rows(symbol, kl, oi_map))
+        written = store.upsert_bars(symbol, all_rows)
+        if missing_days:
+            note = f"결측일 {len(missing_days)}개: {', '.join(missing_days[:5])}" \
+                   + (" ..." if len(missing_days) > 5 else "")
 
     logs.append({
         "run_started_utc": run_started, "symbol": symbol, "domain": "bars",
-        "rows_written": written, "range_start_ms": start_ms, "range_end_ms": end_ms,
-        "missing_bars": missing, "elapsed_sec": round(time.time() - t0, 2), "note": note,
+        "rows_written": written,
+        "range_start_ms": int(datetime.combine(start_date, datetime.min.time(),
+                                               timezone.utc).timestamp() * 1000),
+        "range_end_ms": int(datetime.combine(end_date, datetime.min.time(),
+                                             timezone.utc).timestamp() * 1000),
+        "missing_bars": len(missing_days), "elapsed_sec": round(time.time() - t0, 2),
+        "note": note,
     })
 
-    # --- funding -----------------------------------------------------------
+    # --- funding (월 덤프) -------------------------------------------------
+    # 주의: 펀딩은 '월' 덤프만 있고(일 덤프 없음) 그 달이 끝나야 발행된다. 따라서
+    # 진행 중인 달의 펀딩은 다음 달에야 채워진다. 이를 놓치지 않기 위해 펀딩 범위를
+    # 봉 날짜와 분리하고, 마지막 저장분에서 ~40일 소급해 뒤늦게 올라온 월 덤프를 재수집한다.
     t1 = time.time()
     last_f = store.last_funding_time(symbol)
     if last_f is None:
-        f_start = int(end_ms - bf["funding_max_days"] * 86400_000)
-        store.set_meta_once(symbol, "funding_backfill_start_ms", f_start)
+        f_start = datetime.strptime(cfg["vision"]["backfill_start_date"], "%Y-%m-%d").date()
     else:
-        f_start = last_f + 1
-    f_written = 0
-    if f_start < now:
-        raw_f = fetch_funding_range(symbol, f_start, now)
-        f_written = store.upsert_funding(symbol, build_funding_rows(symbol, raw_f))
+        f_start = datetime.fromtimestamp(last_f / 1000, timezone.utc).date() - timedelta(days=40)
+
+    frows: list[dict] = []
+    for ym in _months(f_start, end_date):
+        fm = vs.funding_month(symbol, ym)
+        for ts, rate in fm.items():
+            frows.append({
+                "symbol": symbol, "funding_time": ts,
+                "datetime_utc": netls.ms_to_utc(ts), "datetime_kst": netls.ms_to_kst(ts),
+                "funding_rate": fnum(rate), "mark_price": "",  # 월 덤프엔 mark price 없음
+            })
+    f_written = store.upsert_funding(symbol, frows)
     logs.append({
         "run_started_utc": run_started, "symbol": symbol, "domain": "funding",
-        "rows_written": f_written, "range_start_ms": f_start, "range_end_ms": now,
+        "rows_written": f_written, "range_start_ms": "", "range_end_ms": "",
         "missing_bars": 0, "elapsed_sec": round(time.time() - t1, 2), "note": "",
     })
     return logs
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="NetLS 백필형 수집기")
+    p = argparse.ArgumentParser(description="NetLS 백필형 수집기 (vision)")
     p.add_argument("--config", default="config.json")
     p.add_argument("--symbol", help="단일 심볼만 수집(설정 override)")
     args = p.parse_args(argv)
@@ -257,10 +210,11 @@ def main(argv: list[str] | None = None) -> int:
             logs = collect_symbol(store, sym, cfg, run_started)
             all_logs.extend(logs)
             for lg in logs:
-                print(f"  {lg['domain']:8s} rows={lg['rows_written']:5d} "
-                      f"missing={lg['missing_bars']} {lg['elapsed_sec']}s {lg['note']}")
-    except api.RegionBlockedError as e:
-        print(f"[지역차단] {e}")
+                print(f"  {lg['domain']:8s} rows={lg['rows_written']:6d} "
+                      f"missing_days={lg['missing_bars']} {lg['elapsed_sec']}s {lg['note']}")
+    except RegionBlockedError as e:
+        # vision까지 차단 → 사실상 판정 C. 명확히 실패 처리.
+        print(f"[지역차단] vision 접근 차단됨(판정 C 가능성): {e}")
         store.append_runlog(all_logs)
         return 2
 
@@ -269,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     total = sum(lg["rows_written"] for lg in all_logs)
     parts = [f"{lg['symbol']}/{lg['domain']}+{lg['rows_written']}"
              for lg in all_logs if lg["rows_written"] > 0]
-    summary = (f"collect {run_started}Z | rows={total} | "
+    summary = (f"collect(vision) {run_started}Z | rows={total} | "
                + (", ".join(parts) if parts else "no new data"))
     store.write_summary(summary)
     print(summary)

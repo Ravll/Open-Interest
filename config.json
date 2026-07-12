@@ -1,16 +1,23 @@
 {
   "symbols": ["BTCUSDT", "ETHUSDT"],
   "interval": "5m",
-  "oi_period": "5m",
+  "source": "vision",
   "data_dir": "data",
+
+  "vision": {
+    "backfill_start_date": "2025-07-01"
+  },
+
   "backfill": {
     "klines_max_days": 400,
     "oi_max_days": 30,
     "funding_max_days": 400
   },
+
   "_comment": {
-    "symbols": "수집 대상. 원소 추가만으로 확장.",
-    "oi_max_days": "openInterestHist는 바이낸스가 최근 30일만 제공(하드 제약). forward 수집으로만 축적.",
-    "klines_max_days/funding_max_days": "최초 실행 시 이 일수만큼 소급 백필. 이후엔 마지막 저장 지점부터 증분."
+    "source": "Task 0 판정 결과. 'vision'=data.binance.vision 일 덤프(러너 미국차단 대응, 하루 지연). 'fapi'=fapi 직접호출(로컬/비차단 환경).",
+    "vision.backfill_start_date": "최초 실행 시 이 날짜(UTC)부터 소급 백필. vision은 fapi의 OI 30일 제한이 없어 과거 소급 가능. 더 길게 원하면 날짜를 앞당기면 됨(없는 날짜는 자동 스킵).",
+    "backfill": "source='fapi'일 때만 사용하는 소급 한도(로컬 verify/대체용).",
+    "symbols": "수집 대상. 원소 추가만으로 확장."
   }
 }
