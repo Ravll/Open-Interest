@@ -1,0 +1,7 @@
+# 런타임 의존성 없음 — 표준 라이브러리(urllib, csv, json)만 사용.
+# GitHub Actions에서 pip install 단계 없이 즉시 실행 가능하도록 의도적으로 무의존.
+#
+# 선택: 다운스트림 분석(Phase 2)에서 CSV를 다룰 때 아래를 사용할 수 있으나
+#      본 수집 리포는 이를 요구하지 않는다.
+# pandas>=2.0
+# pyarrow>=15.0

@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.tmp
+collector_stdout.log
+report_*.md
+.venv/
+.vscode/
+.idea/
+
+# data/ 는 커밋 대상(수집 산출물)이므로 무시하지 않는다.

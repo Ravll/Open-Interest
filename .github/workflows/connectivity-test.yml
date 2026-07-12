@@ -1,0 +1,24 @@
+name: Task0 Connectivity Test
+
+# Task 0: Actions 러너에서 바이낸스 API 접근성(HTTP 451 지역차단 여부)을 확인한다.
+# 수동 트리거 전용. 결과 판정(A/B/C)이 이후 collect.yml 아키텍처를 결정한다.
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Show runner region hint
+        run: |
+          echo "Runner public IP / geo (참고용):"
+          curl -s https://ipinfo.io/json || true
+
+      - name: Run connectivity probe
+        run: python connectivity_test.py

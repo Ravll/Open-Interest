@@ -1,0 +1,62 @@
+name: Collect NetLS Data
+
+# Task 3: 백필형 수집기를 30분 주기로 실행하고, 데이터 변경 시에만 커밋·푸시한다.
+# 데이터 커밋이 지속되는 한 60일 비활성화 규칙은 자동 회피된다.
+#
+# Task 0 판정이 B(fapi 차단)로 나오면 아래 cron을 일 1회('0 1 * * *' 등)로 바꾸고
+# collector를 data.binance.vision 경로로 전환한다(README 아키텍처 결정 기록 참조).
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # 30분 주기 (UTC). Actions cron은 지연이 흔하나 백필로 무해화.
+  workflow_dispatch:
+
+# 이전 실행이 안 끝났으면 중복 실행 방지 (푸시 경합 방지).
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # 데이터 커밋·푸시
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run collector
+        run: python collector.py --config config.json | tee collector_stdout.log
+
+      - name: Commit & push if data changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "변경 없음 — 커밋 생략."
+            exit 0
+          fi
+          SUMMARY="$(cat data/_last_run_summary.txt 2>/dev/null || echo 'collect: data update')"
+          git commit -m "data: ${SUMMARY}"
+          # 스케줄 겹침으로 원격이 앞서갔을 수 있으니 rebase 후 재푸시 1회 시도.
+          for i in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && git push && break
+            echo "push 재시도 $i..."
+            sleep 5
+          done
+
+      - name: Upload run log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collector-log
+          path: |
+            collector_stdout.log
+            data/_runlog.csv
+          if-no-files-found: ignore

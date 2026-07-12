@@ -1,0 +1,16 @@
+{
+  "symbols": ["BTCUSDT", "ETHUSDT"],
+  "interval": "5m",
+  "oi_period": "5m",
+  "data_dir": "data",
+  "backfill": {
+    "klines_max_days": 400,
+    "oi_max_days": 30,
+    "funding_max_days": 400
+  },
+  "_comment": {
+    "symbols": "수집 대상. 원소 추가만으로 확장.",
+    "oi_max_days": "openInterestHist는 바이낸스가 최근 30일만 제공(하드 제약). forward 수집으로만 축적.",
+    "klines_max_days/funding_max_days": "최초 실행 시 이 일수만큼 소급 백필. 이후엔 마지막 저장 지점부터 증분."
+  }
+}
