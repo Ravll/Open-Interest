@@ -14,10 +14,11 @@ Task 1: Net Long/Short 지표 재현 검증 스크립트.
     klines의 open_time(캔들 시가)과 openInterestHist의 timestamp(스냅샷 시각)는
     둘 다 5분 그리드 경계(예: 00, 05, 10분...)에 정렬되어 발행된다. 실측에서 동일
     epoch(ms) 값을 확인했다. 따라서 open_time == oi_timestamp 로 직접 조인한다.
-    ΔOI는 인접한 두 OI 스냅샷의 차이(OI[t] − OI[t−1])로 계산하므로, 각 캔들의
-    ΔOI는 "해당 봉 시작 시점 대비 다음 봉 시작 시점"이 아니라 "직전 봉 시작 대비
-    현재 봉 시작"의 변화량이다. CVD Δ는 해당 봉 구간 [open, open+5m) 의 테이커
-    체결로 계산된다. 이 미세한 구간 정의 차이는 알려진 한계로 리포트에 명기한다.
+
+    ΔOI[T] = OI[T+1] − OI[T] : "해당 캔들 구간 [T, T+5m) 동안의 OI 변화"로 정의한다.
+    CVD_Δ[T]도 같은 구간의 테이커 체결이므로 두 값의 시간축이 정확히 일치하며, 이렇게
+    맞춰야 Coinglass Net L/S(New) 표시값과 일치한다(2026-07 BTC 실측 대조로 확인).
+    (초기 버전은 OI[T] − OI[T−1]로 한 봉 밀려 계산해 Coinglass와 어긋났음 → 수정됨)
 """
 from __future__ import annotations
 
@@ -69,17 +70,18 @@ def fetch_bars(symbol: str, start_ms: int, end_ms: int) -> list[Bar]:
 
     # OI: openInterestHist는 30일 한도. 요청 구간에 한 칸 앞선 스냅샷도 필요하므로
     # start를 한 봉 당겨 ΔOI[first] 계산이 가능하도록 한다.
+    # ΔOI[T] = OI[T+1] − OI[T] (캔들 구간 동안 OI 변화)이므로 마지막 봉의 다음 OI까지 확보.
     raw_oi = api.open_interest_hist(
-        symbol, "5m", start_ms=start_ms - BAR_MS, end_ms=end_ms, limit=500
+        symbol, "5m", start_ms=start_ms, end_ms=end_ms + BAR_MS, limit=500
     )
     oi_map: dict[int, float] = {int(o["timestamp"]): float(o["sumOpenInterest"]) for o in raw_oi}
 
     for ot, bar in bars.items():
         if ot in oi_map:
             bar.sum_oi = oi_map[ot]
-            prev = oi_map.get(ot - BAR_MS)
-            if prev is not None:
-                bar.oi_delta = bar.sum_oi - prev
+            nxt = oi_map.get(ot + BAR_MS)   # 해당 캔들 구간 [T, T+5m) 동안의 OI 변화
+            if nxt is not None:
+                bar.oi_delta = nxt - bar.sum_oi
                 bar.net_long_delta = netls.net_long_delta(bar.oi_delta, bar.cvd_delta)
                 bar.net_short_delta = netls.net_short_delta(bar.oi_delta, bar.cvd_delta)
                 bar.residual = netls.identity_residual(

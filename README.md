@@ -173,11 +173,17 @@ Net Short Δ  = ΔOI − CVD Δ / 2
 
 - `takerBuyBase` = kline의 taker buy base asset volume (필드 인덱스 9)
 - `totalVolume`  = kline의 base asset volume (필드 인덱스 5)
-- `ΔOI`          = `sumOpenInterest[t] − sumOpenInterest[t−1]` (기초자산 단위)
+- `ΔOI`          = `sumOpenInterest[t+1] − sumOpenInterest[t]` (기초자산 단위)
+  = **해당 캔들 구간 [t, t+5m) 동안의 OI 변화.** CVD_Δ[t]도 같은 구간의 테이커 체결이라
+  시간축이 정확히 일치한다. (이렇게 맞춰야 Coinglass Net L/S(New)와 일치 — 아래 검증 참조)
 
-**검산 근거** (2026-07-11 18:20 KST, 5분봉): ΔOI −1,497, CVD +6,350
-→ Long Δ +1,678, Short Δ −4,672 (Coinglass 표시값과 일치).
-본 리포의 `verify_netls.py` 실행 시 모든 봉에서 항등식 잔차 ≈ 0 으로 자가검증된다.
+**Coinglass 대조 검증** (2026-07-12 BTCUSDT, 5분봉 10개): CVD는 소수점까지 일치,
+ΔOI도 위 정의(t+1−t)로 맞추면 netLong/netShort가 Coinglass와 정합 →
+**판정: 일치(배율 차이 없음). Coinglass는 바이낸스 단일 기준이며 본 데이터로 완전 대체 가능.**
+`verify_netls.py` 실행 시 모든 봉에서 항등식 잔차 ≈ 0 으로 자가검증된다.
+
+> 이력: 초기 버전은 `ΔOI = OI[t] − OI[t−1]`(직전 캔들 변화)로 한 봉 밀려 계산돼 Coinglass와
+> 어긋났다. 위 대조로 원인을 규명해 `OI[t+1] − OI[t]`로 수정하고 전체 파생 컬럼을 재계산했다.
 
 ---
 
@@ -276,8 +282,9 @@ data/_last_run_summary.txt            커밋 메시지용 요약
 
 봉 자체로 완결되는 값만 저장한다: `cvd_delta`(2·takerBuyBase−volume)는 해당 봉의
 테이커 체결만으로 결정된다. `sum_oi`는 임의 시점부터 누적한 러닝값이 아니라 각
-시각의 **절대 스냅샷 관측치**이므로 앵커 문제가 없다. `oi_delta`는 인접 스냅샷 차분으로
-파생 저장하되 원천 `sum_oi`도 함께 보관해 언제든 재계산 가능하게 한다. 임의 시작점에
+시각의 **절대 스냅샷 관측치**이므로 앵커 문제가 없다. `oi_delta`는 캔들 구간 차분
+(`sum_oi[t+1]−sum_oi[t]`)으로 파생 저장하되 원천 `sum_oi`도 함께 보관해 언제든 재계산
+가능하게 한다(실제로 정렬 버그 수정 시 원천값으로 전량 재계산했다). 임의 시작점에
 의존하는 러닝 누적 CVD 같은 값은 저장하지 않는다.
 
 ---

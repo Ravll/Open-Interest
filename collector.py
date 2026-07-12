@@ -80,9 +80,11 @@ def build_bar_rows(symbol: str, kl_map: dict[int, list],
         cur = oi_map.get(ot)
         if cur is not None:
             sum_oi, sum_oi_val = cur
-            prev = oi_map.get(ot - BAR_MS)
-            if prev is not None:
-                oi_delta = sum_oi - prev[0]
+            # ΔOI는 "해당 캔들 구간 [T, T+5m) 동안의 OI 변화" = sum_oi[T+1] − sum_oi[T].
+            # CVD_Δ[T]도 같은 구간의 테이커 체결이라 시간축이 일치한다(Coinglass 정의와 동일).
+            nxt = oi_map.get(ot + BAR_MS)
+            if nxt is not None:
+                oi_delta = nxt[0] - sum_oi
                 nl = netls.net_long_delta(oi_delta, cvd)
                 ns = netls.net_short_delta(oi_delta, cvd)
 
@@ -129,7 +131,8 @@ def collect_symbol(store: CSVStore, symbol: str, cfg: dict, run_started: str) ->
     if start_date > end_date:
         note = "신규 완결일 없음"
     else:
-        # OI 프리로드: 하루 경계 oi_delta 계산 위해 하루 앞선 metrics도 포함.
+        # OI 프리로드: 첫 봉(00:00)의 sum_oi는 전날 metrics 파일 끝행에 있고, 마지막 봉
+        # (23:55)의 다음 OI(익일 00:00)는 당일 파일 끝행에 있다. 하루 앞선 날짜까지 포함.
         oi_map: dict[int, tuple[float, float]] = {}
         for d in _daterange(start_date - timedelta(days=1), end_date):
             oi_map.update(vs.metrics_day(symbol, _dstr(d)))

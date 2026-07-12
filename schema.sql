@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS bars (
     sum_oi           REAL,                       -- 미결제약정(기초자산) 스냅샷; OI 결측 시 NULL
     sum_oi_value     REAL,                       -- 미결제약정(USD) 스냅샷
     cvd_delta        REAL    NOT NULL,           -- 2*taker_buy_base - volume (봉 자체 완결)
-    oi_delta         REAL,                       -- sum_oi[t] - sum_oi[t-1]; 직전봉/OI 결측 시 NULL
+    oi_delta         REAL,                       -- sum_oi[t+1] - sum_oi[t] (캔들 구간 OI변화); 다음봉/OI 결측 시 NULL
     net_long_delta   REAL,                       -- oi_delta + cvd_delta/2
     net_short_delta  REAL,                       -- oi_delta - cvd_delta/2
     PRIMARY KEY (symbol, open_time)              -- 중복 차단(idempotent 재수집 안전)
