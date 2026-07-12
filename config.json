@@ -1,19 +1,19 @@
 {
-  "symbols": ["BTCUSDT", "ETHUSDT"],
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT"
+  ],
   "interval": "5m",
   "source": "vision",
   "data_dir": "data",
-
   "vision": {
     "backfill_start_date": "2025-07-01"
   },
-
   "backfill": {
     "klines_max_days": 400,
     "oi_max_days": 30,
     "funding_max_days": 400
   },
-
   "_comment": {
     "source": "Task 0 판정 결과. 'vision'=data.binance.vision 일 덤프(러너 미국차단 대응, 하루 지연). 'fapi'=fapi 직접호출(로컬/비차단 환경).",
     "vision.backfill_start_date": "최초 실행 시 이 날짜(UTC)부터 소급 백필. vision은 fapi의 OI 30일 제한이 없어 과거 소급 가능. 더 길게 원하면 날짜를 앞당기면 됨(없는 날짜는 자동 스킵).",

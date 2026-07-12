@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetLS 관리자 대시보드</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --fg:#1c1f24; --mut:#6b7280; --line:#e5e7eb;
+    --accent:#2563eb; --ok:#16a34a; --bad:#dc2626; --chip:#eef2ff; --chipfg:#3730a3;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1115; --card:#171a21; --fg:#e5e7eb; --mut:#9ca3af; --line:#262b34;
+      --accent:#60a5fa; --ok:#4ade80; --bad:#f87171; --chip:#1e253a; --chipfg:#93c5fd; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif;font-size:14px}
+  .wrap{max-width:1100px;margin:0 auto;padding:20px}
+  h1{font-size:20px;margin:0}
+  h2{font-size:15px;margin:0 0 12px}
+  .sub{color:var(--mut);font-size:12.5px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;margin:14px 0}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .spacer{flex:1}
+  button{background:var(--accent);color:#fff;border:0;border-radius:8px;
+    padding:8px 12px;font-size:13px;cursor:pointer}
+  button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+  button.danger{background:transparent;color:var(--bad);border:1px solid var(--bad);
+    padding:3px 9px;font-size:12px;border-radius:6px}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  input,select{background:var(--bg);color:var(--fg);border:1px solid var(--line);
+    border-radius:8px;padding:8px 10px;font-size:13px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:right;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  .chip{display:inline-flex;align-items:center;gap:8px;background:var(--chip);
+    color:var(--chipfg);border-radius:999px;padding:5px 6px 5px 12px;font-weight:600}
+  .muted{color:var(--mut)}
+  .msg{font-size:12.5px;margin-top:8px;min-height:16px}
+  .msg.ok{color:var(--ok)} .msg.bad{color:var(--bad)}
+  canvas{width:100%;height:230px;display:block}
+  pre{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);
+    border-radius:8px;padding:10px;font-size:12px;max-height:220px;overflow:auto;margin:8px 0 0}
+  .legend{display:inline-flex;gap:6px;align-items:center;margin-right:14px;font-size:12px}
+  .sw{width:12px;height:3px;border-radius:2px;display:inline-block}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="row">
+    <div>
+      <h1>NetLS 관리자 대시보드</h1>
+      <div class="sub" id="hdr">로딩 중…</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="ghost" onclick="loadAll()">↻ 새로고침</button>
+  </div>
+
+  <!-- 심볼 관리 -->
+  <div class="card">
+    <h2>심볼 관리</h2>
+    <div class="row" id="symChips"></div>
+    <div class="row" style="margin-top:12px">
+      <input id="newSym" placeholder="예: SOLUSDT" style="width:180px"
+             onkeydown="if(event.key==='Enter')addSym()">
+      <button onclick="addSym()">+ 추가</button>
+      <div class="spacer"></div>
+      <button class="ghost" onclick="pushConfig()">☁ 변경사항 GitHub 반영</button>
+    </div>
+    <div class="msg" id="symMsg"></div>
+    <div class="sub" style="margin-top:6px">
+      추가/삭제는 즉시 <code>config.json</code>에 반영됩니다. 실제 자동 수집(Actions)에
+      적용하려면 <b>[GitHub 반영]</b>을 눌러 주세요. 추가한 심볼의 과거 데이터는 다음
+      자동 수집 때 채워집니다(지금 바로 받으려면 아래 <b>[지금 수집]</b> 사용).
+    </div>
+  </div>
+
+  <!-- 현황 -->
+  <div class="card">
+    <h2>수집 현황</h2>
+    <table>
+      <thead><tr>
+        <th>심볼</th><th>봉 수</th><th>기간(KST)</th><th>결측(추정)</th>
+        <th>마지막 수집</th><th>펀딩</th>
+      </tr></thead>
+      <tbody id="statusBody"></tbody>
+    </table>
+  </div>
+
+  <!-- 차트 -->
+  <div class="card">
+    <h2>최근 지표 미리보기</h2>
+    <div class="row">
+      <select id="chartSym" onchange="loadChart()"></select>
+      <select id="chartN" onchange="loadChart()">
+        <option value="288">최근 1일(288봉)</option>
+        <option value="864">최근 3일</option>
+        <option value="2016">최근 7일</option>
+      </select>
+      <div class="spacer"></div>
+      <span class="legend"><span class="sw" style="background:var(--accent)"></span>종가</span>
+      <span class="legend"><span class="sw" style="background:var(--ok)"></span>누적 CVD(테이커압력)</span>
+    </div>
+    <canvas id="chart" width="1040" height="230"></canvas>
+    <div class="sub" id="chartInfo"></div>
+  </div>
+
+  <!-- 지금 수집 -->
+  <div class="card">
+    <h2>지금 수집 (로컬 실행)</h2>
+    <div class="row">
+      <select id="collectSym"><option value="">전체 심볼</option></select>
+      <button id="collectBtn" onclick="collectNow()">▶ 지금 수집</button>
+      <span class="sub">이 PC에서 collector.py를 실행해 데이터를 로컬로 받습니다(한국이라 접속 정상).</span>
+    </div>
+    <pre id="collectOut" style="display:none"></pre>
+  </div>
+
+  <!-- 로그 -->
+  <div class="card">
+    <h2>수집 로그 (최근)</h2>
+    <table>
+      <thead><tr><th>실행(UTC)</th><th>심볼</th><th>구분</th><th>추가행</th>
+        <th>결측</th><th>초</th><th>비고</th></tr></thead>
+      <tbody id="logBody"></tbody>
+    </table>
+  </div>
+
+  <div class="sub" style="text-align:center;margin:20px 0">
+    로컬 전용 · 127.0.0.1 · 종료하려면 실행한 터미널에서 Ctrl+C
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+function fmtKST(ms){ if(ms==null) return "—";
+  return new Date(ms).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+function fmtNum(n){ return n==null? "—" : n.toLocaleString('ko-KR'); }
+async function api(path, method='GET', body){
+  const opt={method,headers:{'Content-Type':'application/json'}};
+  if(body) opt.body=JSON.stringify(body);
+  const r=await fetch(path,opt); return r.json();
+}
+
+let STATUS=null;
+async function loadAll(){
+  STATUS = await api('/api/status');
+  $('#hdr').textContent =
+    `수집원: ${STATUS.source} · 백필 시작: ${STATUS.backfill_start||'—'} · 심볼 ${STATUS.configured_symbols.length}개`;
+  renderChips(); renderStatus(); renderLog(); renderSelectors();
+  loadChart();
+}
+
+function renderChips(){
+  const box=$('#symChips'); box.innerHTML='';
+  STATUS.configured_symbols.forEach(s=>{
+    const c=document.createElement('span'); c.className='chip';
+    c.innerHTML=`${s} <button class="danger" onclick="removeSym('${s}')">삭제</button>`;
+    box.appendChild(c);
+  });
+  if(!STATUS.configured_symbols.length) box.innerHTML='<span class="muted">등록된 심볼 없음</span>';
+}
+
+function renderStatus(){
+  const b=$('#statusBody'); b.innerHTML='';
+  STATUS.symbols.forEach(s=>{
+    const span = (s.first_ms&&s.last_ms)? `${fmtKST(s.first_ms)} ~ ${fmtKST(s.last_ms)}` : '—';
+    const only = s.only_data? ' <span class="muted">(설정에서 빠짐)</span>':'';
+    const gaps = s.gaps_est==null? '—' : (s.gaps_est>0? `<span style="color:var(--bad)">${fmtNum(s.gaps_est)}</span>`:'0');
+    b.innerHTML += `<tr>
+      <td>${s.symbol}${only}</td><td>${fmtNum(s.bars)}</td><td>${span}</td>
+      <td>${gaps}</td><td>${fmtKST(s.last_ms)}</td><td>${fmtNum(s.funding)}</td></tr>`;
+  });
+  if(!STATUS.symbols.length) b.innerHTML='<tr><td colspan="6" class="muted">데이터 없음</td></tr>';
+}
+
+function renderLog(){
+  const b=$('#logBody'); b.innerHTML='';
+  STATUS.runlog.forEach(r=>{
+    b.innerHTML += `<tr><td>${r.run_started_utc||''}</td><td>${r.symbol||''}</td>
+      <td>${r.domain||''}</td><td>${r.rows_written||0}</td><td>${r.missing_bars||0}</td>
+      <td>${r.elapsed_sec||''}</td><td class="muted">${r.note||''}</td></tr>`;
+  });
+  if(!STATUS.runlog.length) b.innerHTML='<tr><td colspan="7" class="muted">로그 없음</td></tr>';
+}
+
+function renderSelectors(){
+  const syms = STATUS.symbols.map(s=>s.symbol);
+  const cs=$('#chartSym'), col=$('#collectSym');
+  const cur=cs.value;
+  cs.innerHTML = syms.map(s=>`<option>${s}</option>`).join('');
+  if(syms.includes(cur)) cs.value=cur;
+  col.innerHTML = '<option value="">전체 심볼</option>' + syms.map(s=>`<option>${s}</option>`).join('');
+}
+
+async function addSym(){
+  const v=$('#newSym').value.trim().toUpperCase();
+  if(!v) return;
+  setMsg('검증 중…','');
+  const r=await api('/api/symbol/add','POST',{symbol:v});
+  setMsg(r.msg, r.ok?'ok':'bad');
+  if(r.ok){ $('#newSym').value=''; loadAll(); }
+}
+async function removeSym(s){
+  if(!confirm(`${s} 수집을 중단할까요? (기존 데이터 파일은 남습니다)`)) return;
+  const r=await api('/api/symbol/remove','POST',{symbol:s});
+  setMsg(r.msg, r.ok?'ok':'bad'); loadAll();
+}
+async function pushConfig(){
+  setMsg('GitHub 반영 중…','');
+  const r=await api('/api/git/push','POST',{});
+  setMsg(r.msg, r.ok?'ok':'bad');
+}
+function setMsg(t,k){ const m=$('#symMsg'); m.textContent=t; m.className='msg '+(k||''); }
+
+// ---- 차트 ----
+async function loadChart(){
+  const sym=$('#chartSym').value; if(!sym){ return; }
+  const n=$('#chartN').value;
+  const r=await api(`/api/series?symbol=${sym}&n=${n}`);
+  drawChart(r.series||[]);
+}
+function drawChart(series){
+  const cv=$('#chart'), ctx=cv.getContext('2d');
+  const W=cv.width, H=cv.height, pad=8;
+  ctx.clearRect(0,0,W,H);
+  if(series.length<2){ $('#chartInfo').textContent='데이터가 부족합니다.'; return; }
+  const close=series.map(d=>d.close);
+  // 누적 CVD
+  let acc=0; const cum=series.map(d=>{acc+=(d.cvd||0); return acc;});
+  const css=getComputedStyle(document.documentElement);
+  const drawLine=(arr,color)=>{
+    const mn=Math.min(...arr), mx=Math.max(...arr), rng=(mx-mn)||1;
+    ctx.strokeStyle=color; ctx.lineWidth=1.6; ctx.beginPath();
+    arr.forEach((v,i)=>{
+      const x=pad+(W-2*pad)*i/(arr.length-1);
+      const y=H-pad-(H-2*pad)*(v-mn)/rng;
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+    });
+    ctx.stroke();
+  };
+  drawLine(close, css.getPropertyValue('--accent').trim());
+  drawLine(cum, css.getPropertyValue('--ok').trim());
+  const last=series[series.length-1];
+  $('#chartInfo').innerHTML =
+    `${last.kst} · 종가 <b>${fmtNum(last.close)}</b> · `+
+    `netLong_Δ ${fmtNum(round2(last.net_long))} / netShort_Δ ${fmtNum(round2(last.net_short))} · `+
+    `누적CVD ${fmtNum(round2(cum[cum.length-1]))}`;
+}
+function round2(n){ return n==null?null:Math.round(n*100)/100; }
+
+// ---- 로컬 수집 ----
+let pollTimer=null;
+async function collectNow(){
+  const sym=$('#collectSym').value;
+  $('#collectBtn').disabled=true;
+  $('#collectOut').style.display='block'; $('#collectOut').textContent='수집 시작 중…';
+  await api('/api/collect','POST',{symbol:sym});
+  pollTimer=setInterval(pollCollect,1200);
+}
+async function pollCollect(){
+  const j=await api('/api/collect/status');
+  $('#collectOut').textContent = j.output || '실행 중…';
+  if(j.done){
+    clearInterval(pollTimer); $('#collectBtn').disabled=false;
+    $('#collectOut').textContent += `\n\n[완료] 종료코드 ${j.returncode}`;
+    loadAll();
+  }
+}
+
+loadAll();
+</script>
+</body>
+</html>
