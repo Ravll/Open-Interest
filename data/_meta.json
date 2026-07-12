@@ -1,0 +1,12 @@
+{
+  "BTCUSDT": {
+    "oi_backfill_start_kst": "2025-06-30 09:05:00",
+    "oi_backfill_start_ms": 1751241900000,
+    "vision_backfill_start_date": "2025-07-01"
+  },
+  "ETHUSDT": {
+    "oi_backfill_start_kst": "2025-06-30 09:05:00",
+    "oi_backfill_start_ms": 1751241900000,
+    "vision_backfill_start_date": "2025-07-01"
+  }
+}
