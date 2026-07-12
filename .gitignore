@@ -8,3 +8,5 @@ report_*.md
 .idea/
 
 # data/ 는 커밋 대상(수집 산출물)이므로 무시하지 않는다.
+
+.claude/
