@@ -77,14 +77,19 @@ def build_bar_rows(symbol: str, kl_map: dict[int, list],
         cvd = netls.cvd_delta(tbb, volume)
 
         sum_oi = sum_oi_val = oi_delta = nl = ns = None
+        top_acc = top_pos = glob_acc = taker_ls = None
         cur = oi_map.get(ot)
         if cur is not None:
-            sum_oi, sum_oi_val = cur
+            sum_oi, sum_oi_val = cur["sum_oi"], cur["sum_oi_value"]
+            top_acc = cur.get("top_acc_ls_ratio")
+            top_pos = cur.get("top_pos_ls_ratio")
+            glob_acc = cur.get("global_acc_ls_ratio")
+            taker_ls = cur.get("taker_ls_vol_ratio")
             # ΔOI는 "해당 캔들 구간 [T, T+5m) 동안의 OI 변화" = sum_oi[T+1] − sum_oi[T].
             # CVD_Δ[T]도 같은 구간의 테이커 체결이라 시간축이 일치한다(Coinglass 정의와 동일).
             nxt = oi_map.get(ot + BAR_MS)
             if nxt is not None:
-                oi_delta = nxt[0] - sum_oi
+                oi_delta = nxt["sum_oi"] - sum_oi
                 nl = netls.net_long_delta(oi_delta, cvd)
                 ns = netls.net_short_delta(oi_delta, cvd)
 
@@ -101,6 +106,8 @@ def build_bar_rows(symbol: str, kl_map: dict[int, list],
             "sum_oi": fnum(sum_oi), "sum_oi_value": fnum(sum_oi_val),
             "cvd_delta": fnum(cvd), "oi_delta": fnum(oi_delta),
             "net_long_delta": fnum(nl), "net_short_delta": fnum(ns),
+            "top_acc_ls_ratio": fnum(top_acc), "top_pos_ls_ratio": fnum(top_pos),
+            "global_acc_ls_ratio": fnum(glob_acc), "taker_ls_vol_ratio": fnum(taker_ls),
         })
     return rows
 

@@ -77,8 +77,14 @@ def klines_day(symbol: str, date_str: str) -> dict[int, list]:
     return out
 
 
-def metrics_day(symbol: str, date_str: str) -> dict[int, tuple[float, float]]:
-    """create_time(ms) -> (sum_open_interest, sum_open_interest_value). 없는 날은 빈 dict."""
+def metrics_day(symbol: str, date_str: str) -> dict[int, dict]:
+    """
+    create_time(ms) -> {sum_oi, sum_oi_value, top_acc_ls_ratio, top_pos_ls_ratio,
+                        global_acc_ls_ratio, taker_ls_vol_ratio}. 없는 날은 빈 dict.
+
+    포지셔닝 비율 4종(상위트레이더 계정수/포지션, 전체 계정수, 테이커 매수/매도 볼륨)은
+    원본 metrics 파일에 함께 제공되므로 같이 저장한다. 파일에 없으면 None.
+    """
     url = f"{VISION}{UM}/daily/metrics/{symbol}/{symbol}-metrics-{date_str}.zip"
     data = _download(url)
     if data is None:
@@ -89,24 +95,28 @@ def metrics_day(symbol: str, date_str: str) -> dict[int, tuple[float, float]]:
     header = rows[0]
     idx = {name: i for i, name in enumerate(header)}
     ct = idx.get("create_time", 0)
-    oi = idx.get("sum_open_interest")
-    oiv = idx.get("sum_open_interest_value")
-    out: dict[int, tuple[float, float]] = {}
+    cols = {
+        "sum_oi": idx.get("sum_open_interest"),
+        "sum_oi_value": idx.get("sum_open_interest_value"),
+        "top_acc_ls_ratio": idx.get("count_toptrader_long_short_ratio"),
+        "top_pos_ls_ratio": idx.get("sum_toptrader_long_short_ratio"),
+        "global_acc_ls_ratio": idx.get("count_long_short_ratio"),
+        "taker_ls_vol_ratio": idx.get("sum_taker_long_short_vol_ratio"),
+    }
+    out: dict[int, dict] = {}
     for row in rows[1:]:
-        if not row or _is_number(row[ct]):  # 데이터행의 create_time은 날짜문자열
-            # 방어: 헤더 없는 변형 파일이면 create_time이 숫자일 수 있음 → 스킵 처리 회피
-            pass
         try:
             ts = dt_utc_to_ms(row[ct])
         except (ValueError, IndexError):
             continue
-        try:
-            v_oi = float(row[oi]) if oi is not None and row[oi] != "" else None
-            v_oiv = float(row[oiv]) if oiv is not None and row[oiv] != "" else None
-        except ValueError:
-            continue
-        if v_oi is not None:
-            out[ts] = (v_oi, v_oiv if v_oiv is not None else 0.0)
+        rec = {}
+        for key, i in cols.items():
+            try:
+                rec[key] = float(row[i]) if i is not None and row[i] != "" else None
+            except (ValueError, IndexError):
+                rec[key] = None
+        if rec.get("sum_oi") is not None:
+            out[ts] = rec
     return out
 
 

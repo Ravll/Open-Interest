@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS bars (
     oi_delta         REAL,                       -- sum_oi[t+1] - sum_oi[t] (캔들 구간 OI변화); 다음봉/OI 결측 시 NULL
     net_long_delta   REAL,                       -- oi_delta + cvd_delta/2
     net_short_delta  REAL,                       -- oi_delta - cvd_delta/2
+    top_acc_ls_ratio    REAL,                    -- 상위트레이더 계정수 L/S 비율 (metrics 원본)
+    top_pos_ls_ratio    REAL,                    -- 상위트레이더 포지션 L/S 비율
+    global_acc_ls_ratio REAL,                    -- 전체 계정수 L/S 비율
+    taker_ls_vol_ratio  REAL,                    -- 테이커 매수/매도 볼륨 비율
     PRIMARY KEY (symbol, open_time)              -- 중복 차단(idempotent 재수집 안전)
 );
 

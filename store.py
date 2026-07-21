@@ -28,6 +28,7 @@ BARS_COLUMNS = [
     "taker_buy_base", "taker_buy_quote",
     "sum_oi", "sum_oi_value", "cvd_delta", "oi_delta",
     "net_long_delta", "net_short_delta",
+    "top_acc_ls_ratio", "top_pos_ls_ratio", "global_acc_ls_ratio", "taker_ls_vol_ratio",
 ]
 
 FUNDING_COLUMNS = [
