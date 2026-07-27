@@ -1,1 +1,1 @@
-collect(vision) 2026-07-26 09:58:03Z | rows=576 | BTCUSDT/bars+288, ETHUSDT/bars+288
+collect(vision) 2026-07-27 11:19:22Z | rows=576 | BTCUSDT/bars+288, ETHUSDT/bars+288
