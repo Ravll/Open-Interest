@@ -77,6 +77,32 @@ def klines_day(symbol: str, date_str: str) -> dict[int, list]:
     return out
 
 
+def _norm_ts_ms(v: int) -> int:
+    """
+    타임스탬프를 밀리초로 정규화.
+    바이낸스 현물 덤프는 2025년경부터 **마이크로초(16자리)**로 발행되고, 선물은 밀리초(13자리)다.
+    자릿수로 자동 판별해 어느 쪽이 와도 ms로 맞춘다(포맷이 다시 바뀌어도 안전).
+    """
+    return v // 1000 if v > 10**14 else v
+
+
+def spot_klines_day(symbol: str, date_str: str) -> dict[int, list]:
+    """
+    현물 5분봉 (베이시스 = 선물−현물 계산용). open_time(ms) -> kline 행.
+    필드 순서는 선물 klines와 동일(12필드). 없는 날은 빈 dict.
+    """
+    url = f"{VISION}/data/spot/daily/klines/{symbol}/5m/{symbol}-5m-{date_str}.zip"
+    data = _download(url)
+    if data is None:
+        return {}
+    out: dict[int, list] = {}
+    for row in _csv_rows(data):
+        if not row or not _is_number(row[0]):      # 헤더 스킵(파일별 유무 상이)
+            continue
+        out[_norm_ts_ms(int(row[0]))] = row
+    return out
+
+
 def metrics_day(symbol: str, date_str: str) -> dict[int, dict]:
     """
     create_time(ms) -> {sum_oi, sum_oi_value, top_acc_ls_ratio, top_pos_ls_ratio,

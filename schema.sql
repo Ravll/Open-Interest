@@ -39,6 +39,23 @@ CREATE TABLE IF NOT EXISTS bars (
     PRIMARY KEY (symbol, open_time)              -- 중복 차단(idempotent 재수집 안전)
 );
 
+-- 현물 5분봉 (베이시스 = 선물−현물 분석용). bars와 (symbol, open_time)으로 조인한다.
+-- 파생(베이시스)은 저장하지 않는다 — 수집기는 원천만 보관하고 분석 단계에서 계산.
+-- 주의: 원본 현물 덤프의 타임스탬프는 마이크로초이며 수집 시 밀리초로 정규화해 저장한다.
+CREATE TABLE IF NOT EXISTS spot (
+    symbol        TEXT    NOT NULL,
+    open_time     INTEGER NOT NULL,              -- 캔들 시가 epoch(ms), 선물 bars와 동일 그리드
+    datetime_utc  TEXT    NOT NULL,
+    datetime_kst  TEXT    NOT NULL,
+    open          REAL    NOT NULL,
+    high          REAL    NOT NULL,
+    low           REAL    NOT NULL,
+    close         REAL    NOT NULL,
+    volume        REAL    NOT NULL,              -- 기초자산 거래량(현물)
+    quote_volume  REAL    NOT NULL,              -- USD 거래대금(현물)
+    PRIMARY KEY (symbol, open_time)
+);
+
 -- 펀딩비 테이블 (8시간 주기, 별도 cadence이므로 분리)
 CREATE TABLE IF NOT EXISTS funding (
     symbol        TEXT    NOT NULL,

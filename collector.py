@@ -172,6 +172,43 @@ def collect_symbol(store: CSVStore, symbol: str, cfg: dict, run_started: str) ->
         "note": note,
     })
 
+    # --- spot (베이시스 분석용 현물 5분봉) ---------------------------------
+    # 선물 bars와 동일한 open_time 그리드로 저장해 조인 가능. 파생(베이시스)은 저장하지
+    # 않는다(수집기는 원천만). 현물 덤프는 타임스탬프가 마이크로초라 vision_source에서 정규화됨.
+    t_s = time.time()
+    last_spot = store.last_spot_time(symbol)
+    if last_spot is None:
+        s_start = datetime.strptime(cfg["vision"]["backfill_start_date"], "%Y-%m-%d").date()
+        store.set_meta_once(symbol, "spot_backfill_start_date", _dstr(s_start))
+    else:
+        s_start = datetime.fromtimestamp(last_spot / 1000, timezone.utc).date()
+
+    s_written = 0
+    s_missing: list[str] = []
+    if s_start <= end_date:
+        srows: list[dict] = []
+        for d in _daterange(s_start, end_date):
+            sk = vs.spot_klines_day(symbol, _dstr(d))
+            if not sk:
+                s_missing.append(_dstr(d))
+                continue
+            for ot in sorted(sk):
+                k = sk[ot]
+                srows.append({
+                    "symbol": symbol, "open_time": ot,
+                    "datetime_utc": netls.ms_to_utc(ot), "datetime_kst": netls.ms_to_kst(ot),
+                    "open": fnum(float(k[1])), "high": fnum(float(k[2])),
+                    "low": fnum(float(k[3])), "close": fnum(float(k[4])),
+                    "volume": fnum(float(k[5])), "quote_volume": fnum(float(k[7])),
+                })
+        s_written = store.upsert_spot(symbol, srows)
+    logs.append({
+        "run_started_utc": run_started, "symbol": symbol, "domain": "spot",
+        "rows_written": s_written, "range_start_ms": "", "range_end_ms": "",
+        "missing_bars": len(s_missing), "elapsed_sec": round(time.time() - t_s, 2),
+        "note": (f"결측일 {len(s_missing)}개" if s_missing else ""),
+    })
+
     # --- funding (월 덤프) -------------------------------------------------
     # 주의: 펀딩은 '월' 덤프만 있고(일 덤프 없음) 그 달이 끝나야 발행된다. 따라서
     # 진행 중인 달의 펀딩은 다음 달에야 채워진다. 이를 놓치지 않기 위해 펀딩 범위를

@@ -2,31 +2,37 @@
   "BNBUSDT": {
     "oi_backfill_start_kst": "2025-06-30 09:00:00",
     "oi_backfill_start_ms": 1751241600000,
+    "spot_backfill_start_date": "2025-07-01",
     "vision_backfill_start_date": "2025-07-01"
   },
   "BTCUSDT": {
     "oi_backfill_start_kst": "2025-06-30 09:05:00",
     "oi_backfill_start_ms": 1751241900000,
+    "spot_backfill_start_date": "2025-07-01",
     "vision_backfill_start_date": "2025-07-01"
   },
   "DOGEUSDT": {
     "oi_backfill_start_kst": "2025-06-30 09:00:00",
     "oi_backfill_start_ms": 1751241600000,
+    "spot_backfill_start_date": "2025-07-01",
     "vision_backfill_start_date": "2025-07-01"
   },
   "ETHUSDT": {
     "oi_backfill_start_kst": "2025-06-30 09:05:00",
     "oi_backfill_start_ms": 1751241900000,
+    "spot_backfill_start_date": "2025-07-01",
     "vision_backfill_start_date": "2025-07-01"
   },
   "SOLUSDT": {
     "oi_backfill_start_kst": "2025-06-30 09:00:00",
     "oi_backfill_start_ms": 1751241600000,
+    "spot_backfill_start_date": "2025-07-01",
     "vision_backfill_start_date": "2025-07-01"
   },
   "XRPUSDT": {
     "oi_backfill_start_kst": "2025-06-30 09:00:00",
     "oi_backfill_start_ms": 1751241600000,
+    "spot_backfill_start_date": "2025-07-01",
     "vision_backfill_start_date": "2025-07-01"
   }
 }

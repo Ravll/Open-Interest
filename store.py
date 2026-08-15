@@ -36,6 +36,13 @@ FUNDING_COLUMNS = [
     "funding_rate", "mark_price",
 ]
 
+# 현물 5분봉(베이시스 분석용). 선물 bars와 조인하려고 open_time 그리드를 공유한다.
+# 파생(베이시스)은 저장하지 않고 분석 단계에서 계산 — 수집기는 원천만 보관.
+SPOT_COLUMNS = [
+    "symbol", "open_time", "datetime_utc", "datetime_kst",
+    "open", "high", "low", "close", "volume", "quote_volume",
+]
+
 RUNLOG_COLUMNS = [
     "run_started_utc", "symbol", "domain", "rows_written",
     "range_start_ms", "range_end_ms", "missing_bars", "elapsed_sec", "note",
@@ -59,6 +66,9 @@ class CSVStore:
     def _funding_path(self, symbol: str, mkey: str) -> str:
         return os.path.join(self._symbol_dir(symbol), f"funding_{mkey}.csv")
 
+    def _spot_path(self, symbol: str, mkey: str) -> str:
+        return os.path.join(self._symbol_dir(symbol), f"spot_{mkey}.csv")
+
     def _list_partitions(self, symbol: str, prefix: str) -> list[str]:
         d = os.path.join(self.data_dir, symbol)
         if not os.path.isdir(d):
@@ -72,6 +82,9 @@ class CSVStore:
 
     def last_funding_time(self, symbol: str) -> int | None:
         return self._last_time(symbol, "funding_", "funding_time")
+
+    def last_spot_time(self, symbol: str) -> int | None:
+        return self._last_time(symbol, "spot_", "open_time")
 
     def _last_time(self, symbol: str, prefix: str, col: str) -> int | None:
         parts = self._list_partitions(symbol, prefix)
@@ -103,6 +116,9 @@ class CSVStore:
 
     def upsert_funding(self, symbol: str, rows: list[dict]) -> int:
         return self._upsert(symbol, rows, "funding_time", FUNDING_COLUMNS, self._funding_path)
+
+    def upsert_spot(self, symbol: str, rows: list[dict]) -> int:
+        return self._upsert(symbol, rows, "open_time", SPOT_COLUMNS, self._spot_path)
 
     def _upsert(self, symbol: str, rows: list[dict], key: str,
                 columns: list[str], path_fn) -> int:
