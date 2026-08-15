@@ -232,6 +232,7 @@ python collector.py --symbol BTCUSDT       # 단일 심볼
 ```
 data/<symbol>/bars_<YYYY-MM>.csv      5분봉 병합(klines+OI+파생지표)
 data/<symbol>/funding_<YYYY-MM>.csv   펀딩비(8h)
+data/<symbol>/spot_<YYYY-MM>.csv      현물 5분봉(베이시스 분석용, OHLCV)
 data/_meta.json                       심볼별 백필 시작점(데이터셋 생일)
 data/_runlog.csv                      실행별 수집 로그
 data/_last_run_summary.txt            커밋 메시지용 요약
