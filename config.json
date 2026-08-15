@@ -1,7 +1,11 @@
 {
   "symbols": [
     "BTCUSDT",
-    "ETHUSDT"
+    "ETHUSDT",
+    "XRPUSDT",
+    "SOLUSDT",
+    "BNBUSDT",
+    "DOGEUSDT"
   ],
   "interval": "5m",
   "source": "vision",

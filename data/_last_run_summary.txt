@@ -1,1 +1,1 @@
-collect(vision) 2026-08-15 08:26:26Z | rows=0 | no new data
+collect(vision) 2026-08-15 15:11:18Z | rows=477648 | BTCUSDT/bars+288, ETHUSDT/bars+288, XRPUSDT/bars+118080, XRPUSDT/funding+1188, SOLUSDT/bars+118080, SOLUSDT/funding+1188, BNBUSDT/bars+118080, BNBUSDT/funding+1188, DOGEUSDT/bars+118080, DOGEUSDT/funding+1188
