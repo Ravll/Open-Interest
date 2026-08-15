@@ -103,7 +103,8 @@ def _count_and_bounds(path: str, ts_col: int):
 def scan_symbol(data_dir: str, symbol: str) -> dict:
     d = os.path.join(data_dir, symbol)
     info = {"symbol": symbol, "bars": 0, "first_ms": None, "last_ms": None,
-            "funding": 0, "last_funding_ms": None, "gaps_est": None, "has_data": False}
+            "funding": 0, "last_funding_ms": None, "gaps_est": None, "has_data": False,
+            "spot": 0, "last_spot_ms": None}
     if not os.path.isdir(d):
         return info
     bars_files = sorted(f for f in os.listdir(d) if f.startswith("bars_") and f.endswith(".csv"))
@@ -135,7 +136,36 @@ def scan_symbol(data_dir: str, symbol: str) -> dict:
             flast = la
     info["funding"] = ftotal
     info["last_funding_ms"] = flast
+
+    # 현물(spot) 5분봉: 베이시스 분석용. 선물 bars와 같은 open_time 그리드.
+    s_files = sorted(f for f in os.listdir(d) if f.startswith("spot_") and f.endswith(".csv"))
+    stotal = 0
+    slast = None
+    for fn in s_files:
+        n, _, la = _count_and_bounds(os.path.join(d, fn), 1)
+        stotal += n
+        if la is not None:
+            slast = la
+    info["spot"] = stotal
+    info["last_spot_ms"] = slast
     return info
+
+
+def read_research_status() -> dict | None:
+    """
+    선택적 연구 상태 표시. 저장소 루트의 `research_status.json`이 있으면 배너로 띄운다.
+    이 파일은 .gitignore 대상(로컬 전용)이며, 없으면 배너를 표시하지 않는다.
+    형식: {"phase": "...", "since": "...", "note": "...", "items": ["...", ...],
+           "next_review": "..."}
+    """
+    p = os.path.join(ROOT, "research_status.json")
+    if not os.path.exists(p):
+        return None
+    try:
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def read_meta(data_dir: str) -> dict:
@@ -206,6 +236,7 @@ def build_status() -> dict:
         "meta": read_meta(data_dir),
         "runlog": read_runlog(data_dir),
         "data_dir": data_dir,
+        "research": read_research_status(),
     }
 
 

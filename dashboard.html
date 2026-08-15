@@ -59,6 +59,19 @@
     <button class="ghost" onclick="loadAll()">↻ 새로고침</button>
   </div>
 
+  <!-- 연구 상태 배너 (research_status.json 있을 때만) -->
+  <div class="card" id="researchCard" style="display:none;border-left:4px solid var(--accent)">
+    <div class="row" style="align-items:flex-start">
+      <div style="font-size:26px;line-height:1" id="resIcon">🅿️</div>
+      <div style="flex:1">
+        <h2 style="margin:0 0 4px" id="resPhase"></h2>
+        <div class="sub" id="resNote"></div>
+        <ul class="sub" id="resItems" style="margin:8px 0 0;padding-left:18px"></ul>
+        <div class="sub" id="resNext" style="margin-top:8px"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- 심볼 관리 -->
   <div class="card">
     <h2>심볼 관리</h2>
@@ -84,7 +97,7 @@
     <table>
       <thead><tr>
         <th>심볼</th><th>봉 수</th><th>기간(KST)</th><th>결측(추정)</th>
-        <th>마지막 수집</th><th>펀딩</th>
+        <th>마지막 수집</th><th>펀딩</th><th>현물</th>
       </tr></thead>
       <tbody id="statusBody"></tbody>
     </table>
@@ -150,8 +163,20 @@ async function loadAll(){
   STATUS = await api('/api/status');
   $('#hdr').textContent =
     `수집원: ${STATUS.source} · 백필 시작: ${STATUS.backfill_start||'—'} · 심볼 ${STATUS.configured_symbols.length}개`;
-  renderChips(); renderStatus(); renderLog(); renderSelectors();
+  renderChips(); renderStatus(); renderLog(); renderSelectors(); renderResearch();
   loadChart();
+}
+
+function renderResearch(){
+  const r = STATUS.research;
+  const card = $('#researchCard');
+  if(!r){ card.style.display='none'; return; }
+  card.style.display='block';
+  $('#resIcon').textContent = r.icon || '🅿️';
+  $('#resPhase').textContent = (r.phase||'연구 상태') + (r.since? ` · ${r.since}~` : '');
+  $('#resNote').textContent = r.note || '';
+  $('#resItems').innerHTML = (r.items||[]).map(t=>`<li>${t}</li>`).join('');
+  $('#resNext').innerHTML = r.next_review? `<b>재개 시점/조건:</b> ${r.next_review}` : '';
 }
 
 function renderChips(){
@@ -170,11 +195,16 @@ function renderStatus(){
     const span = (s.first_ms&&s.last_ms)? `${fmtKST(s.first_ms)} ~ ${fmtKST(s.last_ms)}` : '—';
     const only = s.only_data? ' <span class="muted">(설정에서 빠짐)</span>':'';
     const gaps = s.gaps_est==null? '—' : (s.gaps_est>0? `<span style="color:var(--bad)">${fmtNum(s.gaps_est)}</span>`:'0');
+    // 현물이 선물 대비 크게 부족하면 눈에 띄게(수집 누락 신호)
+    const spotCell = s.spot ? ((s.bars && s.spot < s.bars*0.95)
+        ? `<span style="color:var(--bad)">${fmtNum(s.spot)}</span>` : fmtNum(s.spot))
+      : '<span class="muted">—</span>';
     b.innerHTML += `<tr>
       <td>${s.symbol}${only}</td><td>${fmtNum(s.bars)}</td><td>${span}</td>
-      <td>${gaps}</td><td>${fmtKST(s.last_ms)}</td><td>${fmtNum(s.funding)}</td></tr>`;
+      <td>${gaps}</td><td>${fmtKST(s.last_ms)}</td><td>${fmtNum(s.funding)}</td>
+      <td>${spotCell}</td></tr>`;
   });
-  if(!STATUS.symbols.length) b.innerHTML='<tr><td colspan="6" class="muted">데이터 없음</td></tr>';
+  if(!STATUS.symbols.length) b.innerHTML='<tr><td colspan="7" class="muted">데이터 없음</td></tr>';
 }
 
 function renderLog(){
