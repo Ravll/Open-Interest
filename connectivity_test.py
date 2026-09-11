@@ -21,6 +21,9 @@ TARGETS = [
     ("klines",     "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=5m&limit=5"),
     ("oi_hist",    "https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=5m&limit=5"),
     ("vision_root", "https://data.binance.vision/"),
+    # 시그널봇(OI-SignalBot) 대상인 TradFi 무기한물 — 암호화폐와 지역 정책이 다를 수 있어 따로 확인
+    ("tradfi_klines", "https://fapi.binance.com/fapi/v1/klines?symbol=SOXLUSDT&interval=15m&limit=3"),
+    ("tradfi_oi",     "https://fapi.binance.com/futures/data/openInterestHist?symbol=SOXLUSDT&period=15m&limit=3"),
 ]
 
 # plan B의 실제 수집원: index가 아니라 zip 오브젝트를 러너가 받을 수 있어야 한다.
@@ -106,14 +109,19 @@ def main() -> int:
         msg = "fapi·vision 모두 차단 → Actions 포기, 아시아 리전 VM 검토 필요"
 
     print(f"판정: {verdict}\n{msg}")
-    print("결과 JSON:", json.dumps({"results": results, "verdict": verdict}))
+    bot_ok = all(results.get(k) == 200 for k in ("tradfi_klines", "tradfi_oi"))
+    bot_msg = ("시그널봇(SOXL/SOXS/KORU) 클라우드 실행: 가능 — Actions 무인 배포 사용 가능"
+               if bot_ok else
+               "시그널봇(SOXL/SOXS/KORU) 클라우드 실행: 불가 — 로컬 PC 또는 아시아 리전 서버 필요")
+    print(bot_msg)
+    print("결과 JSON:", json.dumps({"results": results, "verdict": verdict, "signal_bot_cloud": bot_ok}))
 
     # Actions Step Summary 로 노출 (있을 때만)
     import os
     spath = os.environ.get("GITHUB_STEP_SUMMARY")
     if spath:
         with open(spath, "a", encoding="utf-8") as f:
-            f.write(f"## Task 0 접근성 판정: **{verdict}**\n\n{msg}\n\n")
+            f.write(f"## Task 0 접근성 판정: **{verdict}**\n\n{msg}\n\n**{bot_msg}**\n\n")
             f.write("| target | status |\n|---|---|\n")
             for k, v in results.items():
                 f.write(f"| {k} | {v} |\n")
